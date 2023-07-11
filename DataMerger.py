@@ -41,6 +41,7 @@ class DataMerger:
         self.__raw_data_dir = os.path.join(cwd, 'data')
         if not os.path.exists(self.__raw_data_dir):
             os.makedirs(self.__raw_data_dir)
+            raise FileExistsError(f"数据集目录未发现，已创建该目录：{self.__raw_data_dir}，请将数据集放入该目录后重新运行")
 
         # 数据集汇总表存放目录
         cur_time = datetime.now().strftime("%Y%m%d")
@@ -107,8 +108,8 @@ class DataMerger:
             for time in self.__time_intervals:
                 # 有的时间点带*号，特例处理
                 if str(time).find("*") != -1:
-                    headers.append(organ + " mean" + str(time)[:-1] + "min*")
-                    headers.append(organ + " sd" + str(time)[:-1] + "min*")
+                    headers.append(organ + " mean" + str(time)[:-1] + "*min")
+                    headers.append(organ + " sd" + str(time)[:-1] + "*min")
                 else:
                     headers.append(organ + " mean" + str(time) + "min")
                     headers.append(organ + " sd" + str(time) + "min")
@@ -159,7 +160,7 @@ class DataMerger:
             print(e)
             return None
         worksheet = wb.active
-
+        # 化合物编号
         compound_index = os.path.splitext(os.path.split(workbook)[-1])[0]
         # 保存器官与不同时间对应浓度的字典
         organ_concentration_dict = dict()
@@ -173,65 +174,54 @@ class DataMerger:
             if is_header_row:
                 # 遍历每列的时间点数据
                 for cell in row:
-                    if cell.value is not None:
-                        time_header = str(cell.value).strip().replace(
-                            " ", "").replace("\n", "").lower()
-                        # 判断时间点是否是被拒绝接受的，是则跳过不处理，否则为正常的时间点数据
-                        if time_header not in self.__denied_interval_markers:
-                            # 修正由于OCR识别问题导致的字符错误
-                            error_text = ymlReader.get_OCR_error_text(self.__ymlfilename)
-                            if error_text is not None and len(error_text) > 0:
-                                for k, v in error_text:
-                                    time_header = time_header.replace(k, v)
-                            # time_header = time_header.replace('mim', 'min')\
-                            #     .replace('minb', 'min')\
-                            #     .replace('minc', 'min') \
-                            #     .replace('miu', 'min')\
-                            #     .replace('mea', 'mean')\
-                            #     .replace('meanm', 'mean')\
-                            #     .replace('meann', 'mean') \
-                            #     .replace('sem', 'sd')\
-                            #     .replace('se', 'sd')\
-                            #     .replace('mn', 'min')
-                        else:
-                            continue
-                        # 存在部分时间点数据缺少时间单位，默认附上min
-                        if not time_header.endswith("min") and not time_header.endswith("h"):
-                            time_header = time_header + "min"
-                        # 将单位是小时的时间点数据转换为分钟
-                        if time_header[-1] == 'h':
-                            try:
-                                # 获取小时数字的字符串范围
-                                index = time_header.find('mean')
+                    if cell.value is None:
+                        continue
+                    time_header = str(cell.value).strip().replace(
+                        " ", "").replace("\n", "").lower()
+                    # 判断时间点是否是被拒绝的，是则跳过不处理，否则为正常的时间点数据
+                    if time_header in self.__denied_interval_markers:
+                        continue
+                    # 修正由于OCR识别问题导致的字符错误，替换为正常的字符
+                    error_text = ymlReader.get_OCR_error_text(self.__ymlfilename)
+                    if error_text is not None and len(error_text) > 0:
+                        for k, v in error_text.items():
+                            time_header = time_header.replace(k, v)
+                    # 存在部分时间点数据缺少时间单位，默认附上min
+                    if not time_header.endswith("min") and not time_header.endswith("h"):
+                        time_header = time_header + "min"
+                    # 将单位是小时的时间点数据转换为分钟
+                    if time_header[-1] == 'h':
+                        try:
+                            # 获取小时数字的字符串范围
+                            index = time_header.find('mean')
+                            if index != -1:
+                                index = index + 4
+                            else:
+                                index = time_header.find('sd')
                                 if index != -1:
-                                    index = index + 4
-                                else:
-                                    index = time_header.find('sd')
-                                    if index != -1:
-                                        index = index + 2
-                                # 转换为分钟
-                                if index != -1:
-                                    hour = int(time_header[index:-1])
-                                    time_header = time_header[:index] + str(hour * 60) + 'min'
-                                else:
-                                    print(
-                                        f"时间点数据存在缺失，对应的化合物为{compound_index}，出错的时间点为{time_header}")
-                                    continue
-                            except ValueError as e:
-                                print(e)
-                                print(f"转换时间点数据出错，对应的化合物为{compound_index}，出错的时间点为{time_header}")
-                        # 还存在部分时序列头的时间数字缺失，输出错误的数据并防止输入到总数据集中
-                        if time_header != 'sdmin' and time_header != 'meanmin':
-                            time_headers.append(time_header)
-                        else:
-                            print(f"时间点数据存在缺失，对应的化合物为{compound_index}，出错的时间点为{time_header}")
+                                    index = index + 2
+                            # 转换为分钟
+                            if index != -1:
+                                hour = int(time_header[index:-1])
+                                time_header = time_header[:index] + str(hour * 60) + 'min'
+                            else:
+                                print(f"时间点数据存在缺失，对应的化合物为{compound_index}，出错的时间点为{time_header}")
+                                continue
+                        except ValueError as e:
+                            print(e)
+                            print(f"转换时间点数据出错，对应的化合物为{compound_index}，出错的时间点为{time_header}")
+                    # 还存在部分时序列头的时间数字缺失，输出错误的数据并防止输入到总数据集中
+                    if time_header != 'sdmin' and time_header != 'meanmin':
+                        time_headers.append(time_header)
+                    else:
+                        print(f"时间点数据存在缺失，对应的化合物为{compound_index}，出错的时间点为{time_header}")
                 # END: for cell in row:
-                # 部分数据文件中的数据并非从第一行开始，通过判断列表的长度可以充当跳过前面空行的作用
                 if len(time_headers) > 0:
+                    # 部分数据文件中的数据并非从第一行开始，通过判断列表的长度可以充当跳过前面空行的作用
+                    is_header_row = False
                     # 试图找出错误的时间列头的列表
                     if str(time_headers[0]).find('mean') == -1 and str(time_headers[0]).find('sd') == -1:
                         print(f"错误的列表头，对应的化合物为{compound_index}，列表头数据为{time_headers}")
-                is_header_row = False
             # END: if is_header_row:
             # 接着处理带数值的列表数据
             else:
@@ -251,18 +241,15 @@ class DataMerger:
                         organ_concentration_dict[organ_name] = temp_list[1:]
         # END: for row in worksheet.rows
 
+        # 检查数据完整性
+        if is_header_row is True or len(organ_concentration_dict) == 0:
+            raise ValueError(f"化合物 {compound_index} 数据存在问题")
         # 组合时间表头与器官名，用于置入DataFrame成为新的表头
         organs = list(organ_concentration_dict.keys())
         extended_headers = ['Compound index']
         for organ in organs:
             for time_header in time_headers:
                 try:
-                    # # 若器官名是被取消的，跳过
-                    # if organ not in self.denied_organ_names:
-                    #     # 若器官名是需要被替换的，替换
-                    #     if self.deprecated_organ_names.get(organ) is not None:
-                    #         organ = self.deprecated_organ_names.get(organ)
-
                     # 组合新的表头，并添加到新表头列表中
                     extended_headers.append(str.lower(" ".join([str(organ), str(time_header)])))
                 except Exception as e:
@@ -275,9 +262,6 @@ class DataMerger:
 
         # 遍历器官数据，并写入到DataFrame对应的列中
         for organ_name, organ_data in organ_concentration_dict.items():
-            # if organ_name not in self.denied_organ_names:
-            #     if self.deprecated_organ_names.get(organ_name) is not None:
-            #         organ_name = self.deprecated_organ_names.get(organ_name)
             cur = 0
             # TODO: 验证跳过部分列头的情况下数据一致性是否收到影响
             print(f"器官{organ_name}：数据长度为{len(organ_data)}, 列头长度为{len(time_headers)}")
@@ -296,7 +280,7 @@ class DataMerger:
                     print("Problem compound index: ", compound_index)
                     print(e)
                     print()
-                    continue
+                    break
         return df
 
     def insert_SMILES_imgs(self):
