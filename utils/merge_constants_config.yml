@@ -234,7 +234,7 @@ denied_organ_names:
   - "xenograftcontrol"
   - "xenografttk+"
 
-# 指定从数据中提取的时间点
+# 指定初始化数据表的时间点，用于保证在此列的时间点数据能按时间升序排列，不在此列的时间点数据会添加到数据表最末端
 time_intervals:
   - 0.25
   - 0.5
@@ -301,7 +301,6 @@ OCR_error_text:
   'minc': 'min'
   'miu': 'min'
   'mn': 'min'
-  'mea': 'mean'
   'meanm': 'mean'
   'meann': 'mean'
   'sem': 'sd'

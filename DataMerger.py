@@ -187,7 +187,9 @@ class DataMerger:
                         for k, v in error_text.items():
                             time_header = time_header.replace(k, v)
                     # 存在部分时间点数据缺少时间单位，默认附上min
-                    if not time_header.endswith("min") and not time_header.endswith("h"):
+                    if not (time_header.endswith("min") or time_header.endswith("min*")) \
+                            and \
+                            not (time_header.endswith("h") or time_header.endswith("h*")):
                         time_header = time_header + "min"
                     # 将单位是小时的时间点数据转换为分钟
                     if time_header[-1] == 'h':
@@ -263,8 +265,7 @@ class DataMerger:
         # 遍历器官数据，并写入到DataFrame对应的列中
         for organ_name, organ_data in organ_concentration_dict.items():
             cur = 0
-            # TODO: 验证跳过部分列头的情况下数据一致性是否收到影响
-            print(f"器官{organ_name}：数据长度为{len(organ_data)}, 列头长度为{len(time_headers)}")
+            # print(f"器官{organ_name}：数据长度为{len(organ_data)}, 列头长度为{len(time_headers)}")
             for data in organ_data:
                 try:
                     time_header = str.lower(' '.join([str(organ_name), str(time_headers[cur])]))
@@ -367,9 +368,10 @@ class DataMerger:
             启动数据整合
         """
         self.__get_imgs()
+        print("start_merging(): 初始化Dataframe表")
         main_df = self.__init_workbook_dataframe()
         # 遍历所有化合物对应的数据excel文件，整合到一个Dataframe中
-        for compound_name, compound_file in tqdm(self.__compound_name2mol_map.items()):
+        for compound_name, compound_file in tqdm(self.__compound_name2mol_map.items(), desc="正在遍历化合物数据"):
             if compound_name is not None:
                 # 获得mol文件对应的excel文件并读取数据
                 compound_excel_name = compound_file.replace("mol", "xlsx")
@@ -385,3 +387,4 @@ class DataMerger:
         main_df.insert(loc=1, column='Compound structure', value="")
         main_df.insert(loc=1, column='SMILES', value="")
         main_df.to_excel(self.result_excel_filename, index=False, engine='openpyxl', encoding='utf-8')
+        print(f"完成化合物数据遍历，数据表保存至{self.result_excel_filename}")
