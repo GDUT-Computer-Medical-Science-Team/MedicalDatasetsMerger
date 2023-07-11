@@ -5,7 +5,7 @@ import yaml
 def __read_from_yml(filename, index):
     if not os.path.exists(filename):
         raise FileNotFoundError("文件不存在")
-    if not filename.endswith('yml') or not filename.endswith('yaml'):
+    if not filename.endswith('yml') and not filename.endswith('yaml'):
         raise FileNotFoundError("输入文件格式错误，指定的文件格式为yml或yaml")
     with open(filename, encoding='utf-8') as f:
         data = yaml.load(f, Loader=yaml.FullLoader)
