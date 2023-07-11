@@ -163,3 +163,5 @@ test.py
 env.*
 data_collector.py
 .idea/*
+data
+result
