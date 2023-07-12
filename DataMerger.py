@@ -1,3 +1,4 @@
+import traceback
 from datetime import datetime
 import pandas as pd
 from pandas.errors import InvalidIndexError
@@ -9,6 +10,18 @@ import openpyxl
 from openpyxl.styles import Alignment
 from openpyxl.drawing.image import Image
 import os
+import logging
+
+# 初始化日志，输出到控制台
+log = logging.getLogger("DataMerger")
+console_handler = logging.StreamHandler()
+console_handler.setLevel('INFO')
+fmt = u'%(asctime)s - %(funcName)s(): %(lineno)s [%(levelname)s]: %(message)s'
+formatter = logging.Formatter(fmt)
+console_handler.setFormatter(formatter)
+
+log.setLevel('INFO')
+log.addHandler(console_handler)
 
 
 class DataMerger:
@@ -45,9 +58,17 @@ class DataMerger:
 
         # 数据集汇总表存放目录
         cur_time = datetime.now().strftime("%Y%m%d")
-        self.__result_dir = f"{cwd}\\result\\{cur_time}"
+        # self.__result_dir = f"{cwd}\\result\\{cur_time}"
+        self.__result_dir = os.path.join(f"{cwd}", "result", f"{cur_time}")
         if not os.path.exists(self.__result_dir):
             os.makedirs(self.__result_dir)
+
+        # 设置日志文件输出
+        log_file = os.path.join(self.__result_dir, "DataMerger.log")
+        file_handler = logging.FileHandler(log_file, encoding='utf8')
+        file_handler.setLevel('DEBUG')
+        file_handler.setFormatter(formatter)
+        log.addHandler(file_handler)
 
         # 数据集化合物图片存放目录
         self.saved_pic_dir = os.path.join(self.__result_dir, 'img')
@@ -78,7 +99,7 @@ class DataMerger:
             把mol文件生成的化合物结构图保存到图片目录中，并保存对应化合物与图片文件路径的映射
         """
         # 读取数据集文件
-        for mol_file in tqdm(self.__mol_files):
+        for mol_file in tqdm(self.__mol_files, desc="正在获取化合物结构图: "):
             try:
                 # 确认文件后缀名是否为mol
                 split_path = os.path.splitext(mol_file)
@@ -93,8 +114,10 @@ class DataMerger:
                     # 保存对应化合物与图片文件路径的映射
                     self.__compound_name2img_map[compound_name] = img_path
             except (FileNotFoundError, OSError) as e:
-                print(e)
+                log.error("结构图生成出现问题:")
+                log.error(traceback.format_exc())
                 self.errorfile.append(mol_file)
+        log.info(f"化合物结构图处理完成，保存至目录: {self.saved_pic_dir}")
 
     def __init_workbook_dataframe(self):
         """
@@ -103,6 +126,7 @@ class DataMerger:
             Return:
                 包含所有列头的空DataFrame
         """
+        log.info("初始化Dataframe表")
         headers = ['Compound index']
         for organ in self.__organ_lists:
             for time in self.__time_intervals:
@@ -157,7 +181,7 @@ class DataMerger:
         try:
             wb = openpyxl.load_workbook(workbook)
         except FileNotFoundError as e:
-            print(e)
+            log.error(traceback.format_exc())
             return None
         worksheet = wb.active
         # 化合物编号
@@ -184,6 +208,8 @@ class DataMerger:
                     # 修正由于OCR识别问题导致的字符错误，替换为正常的字符
                     error_text = ymlReader.get_OCR_error_text(self.__ymlfilename)
                     if error_text is not None and len(error_text) > 0:
+                        # TODO: 有的时间点错误识别为"mea120min"，若在下面的替换规则中加入mea: mean，则会导致正常的"mean"被替换成"meann"
+                        # TODO: 目前删除了mea: mean的替换规则，因此出现上述错误识别的数据无法修正，可以用新的数组记录出错的数据文件
                         for k, v in error_text.items():
                             time_header = time_header.replace(k, v)
                     # 存在部分时间点数据缺少时间单位，默认附上min
@@ -207,23 +233,23 @@ class DataMerger:
                                 hour = int(time_header[index:-1])
                                 time_header = time_header[:index] + str(hour * 60) + 'min'
                             else:
-                                print(f"时间点数据存在缺失，对应的化合物为{compound_index}，出错的时间点为{time_header}")
+                                log.error(f"时间点数据存在缺失，对应的化合物为{compound_index}，出错的时间点为{time_header}")
                                 continue
                         except ValueError as e:
-                            print(e)
-                            print(f"转换时间点数据出错，对应的化合物为{compound_index}，出错的时间点为{time_header}")
+                            log.error(traceback.format_exc())
+                            log.error(f"转换时间点数据出错，对应的化合物为{compound_index}，出错的时间点为{time_header}")
                     # 还存在部分时序列头的时间数字缺失，输出错误的数据并防止输入到总数据集中
                     if time_header != 'sdmin' and time_header != 'meanmin':
                         time_headers.append(time_header)
                     else:
-                        print(f"时间点数据存在缺失，对应的化合物为{compound_index}，出错的时间点为{time_header}")
+                        log.error(f"时间点数据存在缺失，对应的化合物为{compound_index}，出错的时间点为{time_header}")
                 # END: for cell in row:
                 if len(time_headers) > 0:
                     # 部分数据文件中的数据并非从第一行开始，通过判断列表的长度可以充当跳过前面空行的作用
                     is_header_row = False
                     # 试图找出错误的时间列头的列表
                     if str(time_headers[0]).find('mean') == -1 and str(time_headers[0]).find('sd') == -1:
-                        print(f"错误的列表头，对应的化合物为{compound_index}，列表头数据为{time_headers}")
+                        log.error(f"错误的列表头，对应的化合物为{compound_index}，列表头数据为{time_headers}")
             # END: if is_header_row:
             # 接着处理带数值的列表数据
             else:
@@ -255,8 +281,8 @@ class DataMerger:
                     # 组合新的表头，并添加到新表头列表中
                     extended_headers.append(str.lower(" ".join([str(organ), str(time_header)])))
                 except Exception as e:
-                    print(e)
-                    print(f"出错的化合物: {compound_index},器官名: {organ}, "
+                    log.error(traceback.format_exc())
+                    log.error(f"出错的化合物: {compound_index},器官名: {organ}, "
                           f"时间点: {time_header}, 当前替换后的列表头: {extended_headers}")
         # 设置DataFrame并写入化合物编号
         df = pd.DataFrame(columns=extended_headers)
@@ -272,15 +298,14 @@ class DataMerger:
                     df[time_header] = [data]
                     cur = cur + 1
                 except IndexError as e:
-                    print("Sheet rawdata: ", organ_concentration_dict)
-                    print("Organs list: ", organs)
-                    print("Headers list: ", time_headers)
-                    print("Problem organ name:", organ_name)
-                    print("Problem organ rawdata:", data)
-                    print("Cursor index: ", cur)
-                    print("Problem compound index: ", compound_index)
-                    print(e)
-                    print()
+                    log.error("Sheet rawdata: ", organ_concentration_dict)
+                    log.error("Organs list: ", organs)
+                    log.error("Headers list: ", time_headers)
+                    log.error("Problem organ name:", organ_name)
+                    log.error("Problem organ rawdata:", data)
+                    log.error("Cursor index: ", cur)
+                    log.error("Problem compound index: ", compound_index)
+                    log.error(traceback.format_exc())
                     break
         return df
 
@@ -288,6 +313,7 @@ class DataMerger:
         """
             使用openpyxl打开excel文件并进行设定
         """
+        log.info("正在进行化合物结构图及SMILES插入工作，请勿打开数据表直到工作完成")
         # 打开数据汇总表
         wbc = openpyxl.load_workbook(self.result_excel_filename)
         # 操作当前相应的表
@@ -309,7 +335,7 @@ class DataMerger:
         # 第一个化合物从工作簿的第2行开始，记录当前操作的行数
         row = 2
         SMILES_column = 2
-        for compound_name_cell in tqdm(wsc['A']):
+        for compound_name_cell in tqdm(wsc['A'], desc="正在插入化合物SMILES: "):
             # 从第一列获取化合物名，从缓存的映射表中得到化合物对应的mol文件路径
             compound_file_name = self.__compound_name2mol_map.get(compound_name_cell.value)
             if compound_file_name is not None:
@@ -318,7 +344,7 @@ class DataMerger:
                     writer = Chem.MolFromMolFile(compound_file_name)
                     SMILES = Chem.MolToSmiles(writer)
                 except OSError as e:
-                    print(e)
+                    log.error(traceback.format_exc())
                     row = row + 1
                     continue
                 # 将SMILES填写到对应列中
@@ -339,7 +365,7 @@ class DataMerger:
 
         # 读取A列的化合物名
         try:
-            for compound_name_cell in tqdm(wsc['A']):
+            for compound_name_cell in tqdm(wsc['A'], desc="正在插入化合物结构图: "):
                 # if count == map_length:
                 #     break
                 compound_name = compound_name_cell.value
@@ -358,17 +384,17 @@ class DataMerger:
                     row = row + 1
                     count = count + 1
         except UnboundLocalError as e:
-            print(e)
+            log.error(traceback.format_exc())
         finally:
             wbc.save(self.result_excel_filename)
-        print(self.errorfile)
+            log.info("插入工作完成，数据表保存成功")
+        log.error(f"存在问题的数据文件: {self.errorfile}")
 
     def start_merging(self):
         """
             启动数据整合
         """
         self.__get_imgs()
-        print("start_merging(): 初始化Dataframe表")
         main_df = self.__init_workbook_dataframe()
         # 遍历所有化合物对应的数据excel文件，整合到一个Dataframe中
         for compound_name, compound_file in tqdm(self.__compound_name2mol_map.items(), desc="正在遍历化合物数据"):
@@ -380,11 +406,11 @@ class DataMerger:
                     try:
                         main_df = pd.concat([main_df, df], axis=0)
                     except InvalidIndexError as e:
-                        print(compound_file)
-                        print(e)
+                        log.error(f"整合数据文件出错，出错的化合物编号为{compound_file}")
+                        log.error(traceback.format_exc())
         # 去重，并预留保存化合物结构图以及SMILES的空列后保存到excel文件中
         main_df = pd.DataFrame.dropna(main_df, axis=1, how='all')
         main_df.insert(loc=1, column='Compound structure', value="")
         main_df.insert(loc=1, column='SMILES', value="")
         main_df.to_excel(self.result_excel_filename, index=False, engine='openpyxl', encoding='utf-8')
-        print(f"完成化合物数据遍历，数据表保存至{self.result_excel_filename}")
+        log.info(f"完成化合物数据遍历，数据表保存至{self.result_excel_filename}")
