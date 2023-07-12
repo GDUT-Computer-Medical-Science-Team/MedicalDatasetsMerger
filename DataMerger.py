@@ -92,7 +92,8 @@ class DataMerger:
             wkc.save(self.result_excel_filename)
 
         # 记录出错的文件
-        self.errorfile = []
+        # self.errorfile = []
+        self.errorfile = set()
 
     def __get_imgs(self, size=(120, 120)):
         """
@@ -100,12 +101,14 @@ class DataMerger:
         """
         # 读取数据集文件
         for mol_file in tqdm(self.__mol_files, desc="正在获取化合物结构图: "):
-            try:
-                # 确认文件后缀名是否为mol
-                split_path = os.path.splitext(mol_file)
-                if split_path[-1] == '.mol':
-                    # 获得化合物名
-                    compound_name = os.path.split(split_path[0])[-1]
+            # 将文件路径按照"路径+后缀名"进行拆分，确认文件后缀名是否为mol
+            # 如"data\\44593-C6-7α-18FFES.mol"，拆分为('data\\44593-C6-7α-18FFES', '.mol')
+            split_path = os.path.splitext(mol_file)
+            if split_path[-1] == '.mol':
+                # 将路径按照最后一个分隔符进行拆分，如'a\\data\\44593-C6-7α-18FFES'，拆分为('a\\data', '44593-C6-7α-18FFES')
+                # 获得化合物名
+                compound_name = os.path.split(split_path[0])[-1]
+                try:
                     # 读取mol文件并生成化合物结构图
                     mol = Chem.MolFromMolFile(mol_file)
                     img_path = os.path.join(self.saved_pic_dir, compound_name + '.png')
@@ -113,10 +116,10 @@ class DataMerger:
                     Draw.MolToFile(mol, img_path, size=size)
                     # 保存对应化合物与图片文件路径的映射
                     self.__compound_name2img_map[compound_name] = img_path
-            except (FileNotFoundError, OSError) as e:
-                log.error("结构图生成出现问题:")
-                log.error(traceback.format_exc())
-                self.errorfile.append(mol_file)
+                except Exception as e:
+                    log.error(f"化合物编号{compound_name}的结构图生成出现问题:")
+                    log.error(traceback.format_exc())
+                    self.__save_error_compound(mol_file)
         log.info(f"化合物结构图处理完成，保存至目录: {self.saved_pic_dir}")
 
     def __init_workbook_dataframe(self):
@@ -233,16 +236,20 @@ class DataMerger:
                                 hour = int(time_header[index:-1])
                                 time_header = time_header[:index] + str(hour * 60) + 'min'
                             else:
-                                log.error(f"时间点数据存在缺失，对应的化合物为{compound_index}，出错的时间点为{time_header}")
+                                log.error(
+                                    f"时间点数据存在缺失，对应的化合物为{compound_index}，出错的时间点为{time_header}")
+                                self.__save_error_compound(compound_index)
                                 continue
                         except ValueError as e:
                             log.error(traceback.format_exc())
                             log.error(f"转换时间点数据出错，对应的化合物为{compound_index}，出错的时间点为{time_header}")
+                            self.__save_error_compound(compound_index)
                     # 还存在部分时序列头的时间数字缺失，输出错误的数据并防止输入到总数据集中
                     if time_header != 'sdmin' and time_header != 'meanmin':
                         time_headers.append(time_header)
                     else:
                         log.error(f"时间点数据存在缺失，对应的化合物为{compound_index}，出错的时间点为{time_header}")
+                        self.__save_error_compound(compound_index)
                 # END: for cell in row:
                 if len(time_headers) > 0:
                     # 部分数据文件中的数据并非从第一行开始，通过判断列表的长度可以充当跳过前面空行的作用
@@ -250,6 +257,7 @@ class DataMerger:
                     # 试图找出错误的时间列头的列表
                     if str(time_headers[0]).find('mean') == -1 and str(time_headers[0]).find('sd') == -1:
                         log.error(f"错误的列表头，对应的化合物为{compound_index}，列表头数据为{time_headers}")
+                        self.__save_error_compound(compound_index)
             # END: if is_header_row:
             # 接着处理带数值的列表数据
             else:
@@ -271,6 +279,7 @@ class DataMerger:
 
         # 检查数据完整性
         if is_header_row is True or len(organ_concentration_dict) == 0:
+            self.__save_error_compound(compound_index)
             raise ValueError(f"化合物 {compound_index} 数据存在问题")
         # 组合时间表头与器官名，用于置入DataFrame成为新的表头
         organs = list(organ_concentration_dict.keys())
@@ -283,7 +292,8 @@ class DataMerger:
                 except Exception as e:
                     log.error(traceback.format_exc())
                     log.error(f"出错的化合物: {compound_index},器官名: {organ}, "
-                          f"时间点: {time_header}, 当前替换后的列表头: {extended_headers}")
+                              f"时间点: {time_header}, 当前替换后的列表头: {extended_headers}")
+                    self.__save_error_compound(compound_index)
         # 设置DataFrame并写入化合物编号
         df = pd.DataFrame(columns=extended_headers)
         df[extended_headers[0]] = [compound_index]
@@ -297,14 +307,16 @@ class DataMerger:
                     time_header = str.lower(' '.join([str(organ_name), str(time_headers[cur])]))
                     df[time_header] = [data]
                     cur = cur + 1
-                except IndexError as e:
-                    log.error("Sheet rawdata: ", organ_concentration_dict)
-                    log.error("Organs list: ", organs)
-                    log.error("Headers list: ", time_headers)
-                    log.error("Problem organ name:", organ_name)
-                    log.error("Problem organ rawdata:", data)
-                    log.error("Cursor index: ", cur)
-                    log.error("Problem compound index: ", compound_index)
+                # TODO: 重写错误信息输出
+                except Exception as e:
+                    self.__save_error_compound(compound_index)
+                    log.error(f"Sheet rawdata: {organ_concentration_dict}")
+                    log.error(f"Organs list: {organs}")
+                    log.error(f"Headers list: {time_headers}")
+                    log.error(f"Problem organ name: {organ_name}")
+                    log.error(f"Problem organ rawdata: {data}")
+                    log.error(f"Cursor index: {cur}")
+                    log.error(f"Problem compound index: {compound_index}")
                     log.error(traceback.format_exc())
                     break
         return df
@@ -343,8 +355,10 @@ class DataMerger:
                     # 使用RDkit读取mol文件并计算SMILES
                     writer = Chem.MolFromMolFile(compound_file_name)
                     SMILES = Chem.MolToSmiles(writer)
-                except OSError as e:
+                except Exception as e:
+                    log.error(f"SMILES插入出错，化合物编号为{compound_file_name}")
                     log.error(traceback.format_exc())
+                    self.__save_error_compound(compound_file_name)
                     row = row + 1
                     continue
                 # 将SMILES填写到对应列中
@@ -383,12 +397,12 @@ class DataMerger:
                     wsc.row_dimensions[row].height = 96
                     row = row + 1
                     count = count + 1
-        except UnboundLocalError as e:
+        except Exception as e:
             log.error(traceback.format_exc())
         finally:
             wbc.save(self.result_excel_filename)
             log.info("插入工作完成，数据表保存成功")
-        log.error(f"存在问题的数据文件: {self.errorfile}")
+        log.error(f"存在问题的化合物编号: {self.errorfile}")
 
     def start_merging(self):
         """
@@ -405,12 +419,29 @@ class DataMerger:
                 if df is not None:
                     try:
                         main_df = pd.concat([main_df, df], axis=0)
-                    except InvalidIndexError as e:
-                        log.error(f"整合数据文件出错，出错的化合物编号为{compound_file}")
+                    except Exception as e:
+                        log.error(f"整合数据文件出错，出错的化合物编号为{compound_name}")
                         log.error(traceback.format_exc())
+                        self.__save_error_compound(compound_file)
         # 去重，并预留保存化合物结构图以及SMILES的空列后保存到excel文件中
         main_df = pd.DataFrame.dropna(main_df, axis=1, how='all')
         main_df.insert(loc=1, column='Compound structure', value="")
         main_df.insert(loc=1, column='SMILES', value="")
         main_df.to_excel(self.result_excel_filename, index=False, engine='openpyxl', encoding='utf-8')
         log.info(f"完成化合物数据遍历，数据表保存至{self.result_excel_filename}")
+
+    def __save_error_compound(self, compound_index_or_filename: str):
+        """
+        记录以及格式化出错的化合物编号到errorfile中
+        :param compound_index_or_filename:
+        :return:
+        """
+        if compound_index_or_filename is None:
+            return
+        split_path = os.path.splitext(compound_index_or_filename)
+        if split_path[-1] == '.mol':
+            # 获得化合物名
+            compound_name = os.path.split(split_path[0])[-1]
+            self.errorfile.add(compound_name)
+        else:
+            self.errorfile.add(compound_index_or_filename)
