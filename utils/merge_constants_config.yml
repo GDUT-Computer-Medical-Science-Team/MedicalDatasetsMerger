@@ -293,6 +293,8 @@ denied_interval_markers:
   - 'organdistribution'
   - 'regin'
   - 'organ（body）'
+  - 'organ or tissue'
+  - 'Organ/1h'
 
 # 数据中可能存在OCR识别错误而产生的字符错误，修正这些字符
 OCR_error_text:
