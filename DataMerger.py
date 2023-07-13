@@ -1,14 +1,16 @@
 import traceback
-from datetime import datetime
 import pandas as pd
-from pandas.errors import InvalidIndexError
+import xlrd
+from datetime import datetime
 from rdkit import Chem
 from rdkit.Chem import Draw
 from tqdm import tqdm
 from utils import ymlReader
 import openpyxl
+from openpyxl.workbook import Workbook
 from openpyxl.styles import Alignment
 from openpyxl.drawing.image import Image
+from openpyxl import load_workbook
 import os
 import logging
 
@@ -23,6 +25,56 @@ console_handler.setFormatter(formatter)
 log.setLevel('INFO')
 log.addHandler(console_handler)
 
+
+def xls2xlsx(xls_path: str) -> str:
+    """
+    将xls文件转换成xlsx
+    :param xls_path: xls文件路径
+    :return: 保存完成的xlsx路径
+    """
+    # 使用xlrd打开xls工资表
+    book = xlrd.open_workbook(xls_path)
+    index = 0
+    nrows, ncols = 0, 0
+    sheet = book.sheet_by_index(0)
+    while nrows * ncols == 0:
+        sheet = book.sheet_by_index(index)
+        nrows = sheet.nrows
+        ncols = sheet.ncols
+        index += 1
+
+    # 使用openpyxl准备一个xlsx工作表
+    book_new = Workbook()
+    # 删除默认的Sheet
+    default_sheet = book_new["Sheet"]
+    if default_sheet is not None:
+        book_new.remove(default_sheet)
+    # 使用文件名作为工作簿的名字
+    compound_index = os.path.split(os.path.splitext(xls_path)[0])[-1]
+    sheet_new = book_new.create_sheet(compound_index, 0)
+    # 填入数据
+    for row in range(0, nrows):
+        for col in range(0, ncols):
+            sheet_new.cell(row=row + 1, column=col + 1).value = sheet.cell_value(row, col)
+    xlsx_path = os.path.splitext(xls_path)[0] + ".xlsx"
+    book_new.save(xlsx_path)
+    return xlsx_path
+
+
+def change_suffix(filepath: str, dst_suffix: str):
+    """
+    将filepath指定的文件后缀改为dst_suffix
+    :param filepath:
+    :param dst_suffix:
+    :return: 修改后的文件路径字符串，若参数存在None，返回None
+    """
+    if dst_suffix is not None:
+        dot = str.find(dst_suffix, ".")
+        if dot == -1:
+            dst_suffix = "." + dst_suffix
+        if filepath is not None:
+            return os.path.splitext(filepath)[0] + dst_suffix
+    return None
 
 class DataMerger:
     def __init__(self, constants_yml_filename):
@@ -64,7 +116,7 @@ class DataMerger:
             os.makedirs(self.__result_dir)
 
         # 设置日志文件输出
-        log_file = os.path.join(self.__result_dir, "DataMerger.log")
+        log_file = os.path.join(self.__result_dir, "DataMerger_DEBUG.log")
         file_handler = logging.FileHandler(log_file, encoding='utf8')
         file_handler.setLevel('DEBUG')
         file_handler.setFormatter(formatter)
@@ -86,14 +138,142 @@ class DataMerger:
 
         # TODO: 修改输出文件名
         # 创建输出的excel文件
-        self.result_excel_filename = f"{self.__result_dir}\\数据表汇总.xlsx"
-        if not os.path.exists(self.result_excel_filename):
-            wkc = openpyxl.Workbook(self.result_excel_filename)
-            wkc.save(self.result_excel_filename)
+        self.output_excel_filepath = f"{self.__result_dir}\\数据表汇总.xlsx"
+        if not os.path.exists(self.output_excel_filepath):
+            wkc = load_workbook(self.output_excel_filepath)
+            wkc.save(self.output_excel_filepath)
 
         # 记录出错的文件
-        # self.errorfile = []
         self.errorfile = set()
+
+    def start_merging(self):
+        """
+            启动数据整合
+        """
+        self.__get_imgs()
+        main_df = self.__init_workbook_dataframe()
+        # 遍历所有化合物对应的数据excel文件，整合到一个Dataframe中
+        for compound_name, compound_file in tqdm(self.__compound_name2mol_map.items(), desc="正在遍历化合物数据"):
+            if compound_name is not None:
+                # 获得mol文件对应的excel文件并读取数据
+                xlsx_filepath = change_suffix(compound_file, "xlsx")
+                # 若xlsx文件不存在但存在xls文件，则转换xls为xlsx
+                if xlsx_filepath is not None and not os.path.exists(xlsx_filepath):
+                    xls_filepath = change_suffix(compound_file, "xls")
+                    if not os.path.exists(xls_filepath):
+                        log.error(f"化合物编号{compound_name}没有xls或xlsx数据表文件")
+                        self.__save_error_compound(compound_name)
+                        continue
+                    log.info(f"化合物编号{compound_name}数据表格式为xls，另存为xlsx格式")
+                    xlsx_filepath = xls2xlsx(xls_filepath)
+                df = self.__get_DataFrame_from_workbook(xlsx_filepath)
+                if df is not None:
+                    try:
+                        main_df = pd.concat([main_df, df], axis=0)
+                    except pd.errors.InvalidIndexError as IIE:
+                        log.debug(f"整合数据文件存在索引问题，对应化合物编号为{compound_name}")
+                        log.debug(traceback.format_exc())
+                        self.__save_error_compound(compound_file)
+                        continue
+                    except Exception as e:
+                        log.error(f"整合数据文件出错，出错的化合物编号为{compound_name}")
+                        log.error(traceback.format_exc())
+                        self.__save_error_compound(compound_file)
+        # 去重，并预留保存化合物结构图以及SMILES的空列后保存到excel文件中
+        main_df = pd.DataFrame.dropna(main_df, axis=1, how='all')
+        main_df.insert(loc=1, column='Compound structure', value="")
+        main_df.insert(loc=1, column='SMILES', value="")
+        main_df.to_excel(self.output_excel_filepath, index=False, engine='openpyxl', encoding='utf-8')
+        log.info(f"完成化合物数据遍历，数据表保存至{self.output_excel_filepath}")
+
+    def insert_SMILES_imgs(self):
+        """
+            使用openpyxl打开excel文件并进行设定
+        """
+        log.info("正在进行化合物结构图及SMILES插入工作，请勿打开数据表直到工作完成")
+        # 打开数据汇总表
+        wbc = openpyxl.load_workbook(self.output_excel_filepath)
+        # 操作当前相应的表
+        wsc = wbc.active
+
+        # 调整第一二列的列宽，并调整第一行的行高
+        wsc.column_dimensions['A'].width = 25
+        wsc.column_dimensions['B'].width = 50
+        wsc.row_dimensions[1].height = 30
+        # 全表靠左纵向居中
+        alignment = Alignment(horizontal='left', vertical='center')
+        for col in wsc.columns:
+            for cell in col:
+                cell.alignment = alignment
+
+        """
+            插入SMILES
+        """
+        # 第一个化合物从工作簿的第2行开始，记录当前操作的行数
+        row = 2
+        SMILES_column = 2
+        for compound_name_cell in tqdm(wsc['A'], desc="正在插入化合物SMILES: "):
+            # 从第一列获取化合物名，从缓存的映射表中得到化合物对应的mol文件路径
+            compound_file_name = self.__compound_name2mol_map.get(compound_name_cell.value)
+            if compound_file_name is not None:
+                try:
+                    # 使用RDkit读取mol文件并计算SMILES
+                    writer = Chem.MolFromMolFile(compound_file_name)
+                    SMILES = Chem.MolToSmiles(writer)
+                except OSError as ose:
+                    log.debug(f"输入的mol文件存在问题，化合物编号为{compound_file_name}")
+                    log.debug(traceback.format_exc())
+                    self.__save_error_compound(compound_file_name)
+                    row = row + 1
+                    continue
+                except Exception as e:
+                    log.error(f"SMILES插入出错，化合物编号为{compound_file_name}")
+                    log.error(traceback.format_exc())
+                    self.__save_error_compound(compound_file_name)
+                    row = row + 1
+                    continue
+                # 将SMILES填写到对应列中
+                wsc.cell(row, SMILES_column).value = SMILES
+                wsc.cell(row, SMILES_column).alignment = alignment
+                row = row + 1
+
+        """
+            图片写入到汇总表
+        """
+        # 第一个化合物从工作簿的第2行开始，记录当前操作的行数
+        row = 2
+        # 对map长度的计数器，防止map内数据已经使用完的情况下程序还在对excel进行行遍历
+        count = 0
+        # map_length = len(self.compound_name2img_map)
+        # 调整列宽
+        wsc.column_dimensions['C'].width = 20
+
+        # 读取A列的化合物名
+        try:
+            for compound_name_cell in tqdm(wsc['A'], desc="正在插入化合物结构图: "):
+                # if count == map_length:
+                #     break
+                compound_name = compound_name_cell.value
+                # 跳过第一行
+                if compound_name == '文献编号' or compound_name == '化合物编号':
+                    continue
+                img_path = self.__compound_name2img_map.get(compound_name)
+                if img_path is not None:
+                    img = Image(img_path)
+                    # img = PImage.open(img_path).resize((120, 120))
+
+                    # 图片只保存在C列，只对C列每一行进行操作
+                    wsc.add_image(img, 'C' + str(row))
+                    # 调整行高
+                    wsc.row_dimensions[row].height = 96
+                    row = row + 1
+                    count = count + 1
+        except Exception as e:
+            log.error(traceback.format_exc())
+        finally:
+            wbc.save(self.output_excel_filepath)
+            log.info("插入工作完成，数据表保存成功")
+        log.debug(f"存在问题的化合物编号: {self.errorfile}")
 
     def __get_imgs(self, size=(120, 120)):
         """
@@ -116,6 +296,13 @@ class DataMerger:
                     Draw.MolToFile(mol, img_path, size=size)
                     # 保存对应化合物与图片文件路径的映射
                     self.__compound_name2img_map[compound_name] = img_path
+                except OSError as ose:
+                    log.debug(f"输入的mol文件存在问题，化合物编号为{compound_name}")
+                    log.debug(traceback.format_exc())
+                    self.__save_error_compound(compound_name)
+                except Warning as e:
+                    log.debug(f"生成化合物编号{compound_name}的结构图时产生警告: {traceback.format_exc()}")
+                    self.__save_error_compound(compound_name)
                 except Exception as e:
                     log.error(f"化合物编号{compound_name}的结构图生成出现问题:")
                     log.error(traceback.format_exc())
@@ -320,115 +507,6 @@ class DataMerger:
                     log.error(traceback.format_exc())
                     break
         return df
-
-    def insert_SMILES_imgs(self):
-        """
-            使用openpyxl打开excel文件并进行设定
-        """
-        log.info("正在进行化合物结构图及SMILES插入工作，请勿打开数据表直到工作完成")
-        # 打开数据汇总表
-        wbc = openpyxl.load_workbook(self.result_excel_filename)
-        # 操作当前相应的表
-        wsc = wbc.active
-
-        # 调整第一二列的列宽，并调整第一行的行高
-        wsc.column_dimensions['A'].width = 25
-        wsc.column_dimensions['B'].width = 50
-        wsc.row_dimensions[1].height = 30
-        # 全表靠左纵向居中
-        alignment = Alignment(horizontal='left', vertical='center')
-        for col in wsc.columns:
-            for cell in col:
-                cell.alignment = alignment
-
-        """
-            插入SMILES
-        """
-        # 第一个化合物从工作簿的第2行开始，记录当前操作的行数
-        row = 2
-        SMILES_column = 2
-        for compound_name_cell in tqdm(wsc['A'], desc="正在插入化合物SMILES: "):
-            # 从第一列获取化合物名，从缓存的映射表中得到化合物对应的mol文件路径
-            compound_file_name = self.__compound_name2mol_map.get(compound_name_cell.value)
-            if compound_file_name is not None:
-                try:
-                    # 使用RDkit读取mol文件并计算SMILES
-                    writer = Chem.MolFromMolFile(compound_file_name)
-                    SMILES = Chem.MolToSmiles(writer)
-                except Exception as e:
-                    log.error(f"SMILES插入出错，化合物编号为{compound_file_name}")
-                    log.error(traceback.format_exc())
-                    self.__save_error_compound(compound_file_name)
-                    row = row + 1
-                    continue
-                # 将SMILES填写到对应列中
-                wsc.cell(row, SMILES_column).value = SMILES
-                wsc.cell(row, SMILES_column).alignment = alignment
-                row = row + 1
-
-        """
-            图片写入到汇总表
-        """
-        # 第一个化合物从工作簿的第2行开始，记录当前操作的行数
-        row = 2
-        # 对map长度的计数器，防止map内数据已经使用完的情况下程序还在对excel进行行遍历
-        count = 0
-        # map_length = len(self.compound_name2img_map)
-        # 调整列宽
-        wsc.column_dimensions['C'].width = 20
-
-        # 读取A列的化合物名
-        try:
-            for compound_name_cell in tqdm(wsc['A'], desc="正在插入化合物结构图: "):
-                # if count == map_length:
-                #     break
-                compound_name = compound_name_cell.value
-                # 跳过第一行
-                if compound_name == '文献编号' or compound_name == '化合物编号':
-                    continue
-                img_path = self.__compound_name2img_map.get(compound_name)
-                if img_path is not None:
-                    img = Image(img_path)
-                    # img = PImage.open(img_path).resize((120, 120))
-
-                    # 图片只保存在C列，只对C列每一行进行操作
-                    wsc.add_image(img, 'C' + str(row))
-                    # 调整行高
-                    wsc.row_dimensions[row].height = 96
-                    row = row + 1
-                    count = count + 1
-        except Exception as e:
-            log.error(traceback.format_exc())
-        finally:
-            wbc.save(self.result_excel_filename)
-            log.info("插入工作完成，数据表保存成功")
-        log.error(f"存在问题的化合物编号: {self.errorfile}")
-
-    def start_merging(self):
-        """
-            启动数据整合
-        """
-        self.__get_imgs()
-        main_df = self.__init_workbook_dataframe()
-        # 遍历所有化合物对应的数据excel文件，整合到一个Dataframe中
-        for compound_name, compound_file in tqdm(self.__compound_name2mol_map.items(), desc="正在遍历化合物数据"):
-            if compound_name is not None:
-                # 获得mol文件对应的excel文件并读取数据
-                compound_excel_name = compound_file.replace("mol", "xlsx")
-                df = self.__get_DataFrame_from_workbook(compound_excel_name)
-                if df is not None:
-                    try:
-                        main_df = pd.concat([main_df, df], axis=0)
-                    except Exception as e:
-                        log.error(f"整合数据文件出错，出错的化合物编号为{compound_name}")
-                        log.error(traceback.format_exc())
-                        self.__save_error_compound(compound_file)
-        # 去重，并预留保存化合物结构图以及SMILES的空列后保存到excel文件中
-        main_df = pd.DataFrame.dropna(main_df, axis=1, how='all')
-        main_df.insert(loc=1, column='Compound structure', value="")
-        main_df.insert(loc=1, column='SMILES', value="")
-        main_df.to_excel(self.result_excel_filename, index=False, engine='openpyxl', encoding='utf-8')
-        log.info(f"完成化合物数据遍历，数据表保存至{self.result_excel_filename}")
 
     def __save_error_compound(self, compound_index_or_filename: str):
         """
