@@ -305,5 +305,6 @@ OCR_error_text:
   'mn': 'min'
   'meanm': 'mean'
   'meann': 'mean'
+  'mmean': 'mean'
   'sem': 'sd'
   'se': 'sd'
