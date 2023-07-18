@@ -140,7 +140,7 @@ class DataMerger:
         # 创建输出的excel文件
         self.output_excel_filepath = f"{self.__result_dir}\\数据表汇总.xlsx"
         if not os.path.exists(self.output_excel_filepath):
-            wkc = load_workbook(self.output_excel_filepath)
+            wkc = Workbook(self.output_excel_filepath)
             wkc.save(self.output_excel_filepath)
 
         # 记录出错的文件
