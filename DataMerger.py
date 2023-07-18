@@ -452,7 +452,10 @@ class DataMerger:
                 temp_list = []
                 for cell in row:
                     if cell.value is not None:
-                        temp_list.append(str(cell.value).strip().replace(" ", "").replace("\n", ""))
+                        temp_list.append(str(cell.value).strip()
+                                         .replace("_x0001_", "")
+                                         .replace(" ", "")
+                                         .replace("\n", ""))
                 if len(temp_list) > 0:
                     # 每一行的第一列为器官名，提取出来作为字典的键，其他数据为值
                     organ_name = str(temp_list[0]).lower()
