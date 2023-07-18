@@ -456,12 +456,13 @@ class DataMerger:
                 if len(temp_list) > 0:
                     # 每一行的第一列为器官名，提取出来作为字典的键，其他数据为值
                     organ_name = str(temp_list[0]).lower()
-                    # 若器官名是被取消的，跳过
-                    if organ_name not in self.__denied_organ_names:
-                        # 若器官名是需要被替换的，替换
-                        if self.__deprecated_organ_names.get(organ_name) is not None:
-                            organ_name = self.__deprecated_organ_names.get(organ_name)
-                        organ_concentration_dict[organ_name] = temp_list[1:]
+                    # 若器官名不合规或者是被取消的，跳过
+                    if organ_name is not None and len(organ_name) > 0:
+                        if organ_name.isalpha() and organ_name not in self.__denied_organ_names:
+                            # 若器官名是需要被替换的，替换
+                            if self.__deprecated_organ_names.get(organ_name) is not None:
+                                organ_name = self.__deprecated_organ_names.get(organ_name)
+                            organ_concentration_dict[organ_name] = temp_list[1:]
         # END: for row in worksheet.rows
 
         # 检查数据完整性
