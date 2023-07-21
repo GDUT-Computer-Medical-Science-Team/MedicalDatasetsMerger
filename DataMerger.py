@@ -320,13 +320,8 @@ class DataMerger:
         headers = ['Compound index']
         for organ in self.__organ_lists:
             for time in self.__time_intervals:
-                # 有的时间点带*号，特例处理
-                if str(time).find("*") != -1:
-                    headers.append(organ + " mean" + str(time)[:-1] + "*min")
-                    headers.append(organ + " sd" + str(time)[:-1] + "*min")
-                else:
-                    headers.append(organ + " mean" + str(time) + "min")
-                    headers.append(organ + " sd" + str(time) + "min")
+                headers.append(organ + " mean" + str(time) + "min")
+                headers.append(organ + " sd" + str(time) + "min")
         df = pd.DataFrame(columns=headers)
         return df
 
@@ -403,9 +398,7 @@ class DataMerger:
                         for k, v in error_text.items():
                             time_header = time_header.replace(k, v)
                     # 存在部分时间点数据缺少时间单位，默认附上min
-                    if not (time_header.endswith("min") or time_header.endswith("min*")) \
-                            and \
-                            not (time_header.endswith("h") or time_header.endswith("h*")):
+                    if not time_header.endswith("min") and not time_header.endswith("h"):
                         time_header = time_header + "min"
                     # 将单位是小时的时间点数据转换为分钟
                     if time_header[-1] == 'h':
@@ -428,8 +421,8 @@ class DataMerger:
                                 self.__save_error_compound(compound_index)
                                 continue
                         except ValueError as e:
-                            log.error(traceback.format_exc())
                             log.error(f"转换时间点数据出错，对应的化合物为{compound_index}，出错的时间点为{time_header}")
+                            log.error(traceback.format_exc())
                             self.__save_error_compound(compound_index)
                     # 还存在部分时序列头的时间数字缺失，输出错误的数据并防止输入到总数据集中
                     if time_header != 'sdmin' and time_header != 'meanmin':

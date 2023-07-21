@@ -4,7 +4,7 @@
 
 ---
 
-# 用于整合的目标器官，保证整合文件中仅包含以下的器官名及数据
+# 用于整合的目标器官，保证整合文件中首先包含以下的器官名及数据
 # 列表格式
 target_organ_names:
   - "blood"
@@ -295,6 +295,8 @@ denied_interval_markers:
   - 'organ（body）'
   - 'organ or tissue'
   - 'organ/1h'
+  - 'Compound No.'
+  - 'compoundno.'
 
 # 数据中可能存在OCR识别错误而产生的字符错误，修正这些字符
 OCR_error_text:
@@ -308,3 +310,4 @@ OCR_error_text:
   'mmean': 'mean'
   'sem': 'sd'
   'se': 'sd'
+  '*': ''
