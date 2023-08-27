@@ -1,0 +1,313 @@
+# author: ShallCanyon
+# Date: 2023/7/5
+# email: 804732618@qq.com
+
+---
+
+# 用于整合的目标器官，保证整合文件中首先包含以下的器官名及数据
+# 列表格式
+target_organ_names:
+  - "blood"
+  - "brain"
+  - "brain/blooda"
+  - "brain:bloodratio"
+  - "heart"
+  - "heart/blood"
+  - "abdominalaorta"
+  - "adrenal"
+  - "amygdala"
+  - "aorta"
+  - "at"
+  - "bile"
+  - "bladder"
+  - "bone"
+  - "bow"
+  - "colon"
+  - "corpusstriatum"
+  - "eye"
+  - "fat"
+  - "feces"
+  - "git"
+  - "gitract"
+  - "gonad"
+  - "gut"
+  - "hardergland"
+  - "intestine"
+  - "kidney"
+  - "large intestine"
+  - "lean"
+  - "liver"
+  - "llmg"
+  - "lung"
+  - "marrow"
+  - "medulla"
+  - "muscle"
+  - "olfactorybulb"
+  - "ovary"
+  - "pancreas"
+  - "pocs"
+  - "pons"
+  - "pons-medulla"
+  - "prostate"
+  - "region"
+  - "remainder"
+  - "small intestine"
+  - "salivarygland"
+  - "septum"
+  - "skin"
+  - "spleen"
+  - "stiatum"
+  - "stomach"
+  - "submandibular"
+  - "tail"
+  - "testis"
+  - "thalamus"
+  - "thymus"
+  - "thyroid"
+  - "trachea"
+  - "tissue"
+  - "urinarybladder"
+  - "urine"
+  - "uterus"
+
+# 冗余器官名的替换映射表
+# 1. 替换原始数据集中错误的器官名
+# 2. 合并同一器官的不同叫法，例如文献1中的名字为kidney而文献2中为kidneys
+# 字典格式：{"需要被替换的器官名": "替换后的器官名"}
+# JSON表示为：deprecated_organ_names: {"adrenalgland": "adrenal"}
+deprecated_organ_names:
+  "adrenalgland": "adrenal"
+  "adrenal gland": "adrenal"
+  "adrenalglad": "adrenal"
+  "adrenay": "adrenal"
+  "adrenays": "adrenal"
+  "adrenals": "adrenal"
+
+  "bladder/urine": "bladder"
+  "braint": "brain"
+  "bran": "brain"
+  "brainstem": "brain"
+  "brown fat": "fat"
+  "brownfat": "fat"
+  "bones": "bone"
+  "bone marrow": "bone"
+  "bonemarrow": "bone"
+
+  "caudalcortex": "brain"
+  "cerebellam": "brain"
+  "cerebellun": "brain"
+  "cerebellum": "brain"
+  "cerebellurn": "brain"
+  "cerebeum": "brain"
+  "cerebrum": "brain"
+  "cerebralcortex": "brain"
+  "cerebralcoex": "brain"
+  "cerebrum(left)": "brain"
+  "cerebrum(right)": "brain"
+  "cortex": "brain"
+  "cortex(left)": "brain"
+  "cortex(right)": "brain"
+  "cranium": "bone"
+
+  "diencephalon": "brain"
+
+  "eyes": "eye"
+
+  "faeces": "feces"
+  "frontal cortex": "brain"
+  "frontalcortex": "brain"
+  "frontalccortex": "brain"
+  "fatsubcutaneous": "fat"
+  "fat,subcutan": "fat"
+  "femur": "bone"
+  "femurs": "bone"
+
+  "gallbladder": "bladder"
+
+  "hiwocampus": "brain"
+  "hoart": "heart"
+  "hear": "heart"
+  "hippocampus": "brain"
+  "hypothalamus": "brain"
+  "hard.": "hardergland"
+  "harderiangland": "hardergland"
+
+  "iiver": "liver"
+  "intestines": "intestine"
+
+  "kidneys": "kidney"
+  "ktdney": "kidney"
+  "kidners": "kidney"
+  "kidncy": "kidney"
+
+  "lungs": "lung"
+  "lurg": "lung"
+  "lver": "liver"
+  "l-intestine": "large intestine"
+  "l.intest": "large intestine"
+  "large": "large intestine"
+  "largeintestine": "large intestine"
+
+  "muscles": "muscle"
+  "musclo": "muscle"
+  "mwclc": "muscle"
+  "midbrain": "brain"
+  "medalla": "medulla"
+  "modulla": "medulla"
+
+  "gonads": "gonad"
+
+  "ovaries":  "ovary"
+  "occipitalcortex": "brain"
+  "olfac.tub.": "olfactorybulb"
+
+  "pans": "pancreas"
+  "parictalcortex": "brain"
+  "pinealbod": "brain"
+  "pituitary": "brain"
+  "pituitarygland": "brain"
+  "plasma": "blood"
+
+  "restbrain": "brain"
+  "restofbrain": "brain"
+
+  "s-intestine": "small intestine"
+  "s.intest": "small intestine"
+  "s.intestine": "small intestine"
+  "small": "small intestine"
+  "smalintestine": "small intestine"
+  "smallintestine": "small intestine"
+  "smallinterstine": "small intestine"
+  "smallintestines": "small intestine"
+  "smallintestme": "small intestine"
+  "salivaryglands": "salivarygland"
+  "salivary gland": "salivarygland"
+  "splee": "spleen"
+  "skull": "bone"
+  "stomachb": "stomach"
+  "stomachc": "stomach"
+  "striatum": "brain"
+  "stratum": "brain"
+  "striaturn": "brain"
+  "striatam": "brain"
+
+  "testes": "testis"
+  "testicle": "testis"
+  "thalamas": "thalamus"
+  "thyroidc": "thyroid"
+  "thyroidgland": "thyroid"
+
+  "urineb": "bladder"
+
+  "whitefat": "fat"
+  "wholebrain": "brain"
+    
+# 无用的器官名，处理过程中遇到即抛弃
+# 列表格式: ["c6tumor", caecum"]
+denied_organ_names:
+  - ""
+  - " "
+  - "c6tumor"
+  - "caecum"
+  - "carcass"
+  - "cartilage"
+  - "caudate"
+  - "cervicalcord"
+  - "coecum"
+  - "duodenum"
+  - "erythrocyte"
+  - "esophagus"
+  - "fat,mesentrial"
+  - "inferiorcolliculus"
+  - "oesophagus"
+  - "superiorcolliculus"
+  - "trachea"
+  - "tumor"
+  - "tumor:bloodratio"
+  - "tumor:lungratio"
+  - "tumor:muscleratio"
+  - "tumour"
+  - "uterus/blood"
+  - "uterus/muscle"
+  - "uterus-to-blood"
+  - "uterus-to-muscle"
+  - "xenograftcontrol"
+  - "xenografttk+"
+
+# 指定初始化数据表的时间点，用于保证在此列的时间点数据能按时间升序排列，不在此列的时间点数据会添加到数据表最末端
+time_intervals:
+  - 0.25
+  - 0.5
+  - 1
+  - 2
+  - 5
+  - 7
+  - 10
+  - 12
+  - 13
+  - 15
+  - 20
+  - 30
+  - 40
+  - 45
+  - 55
+  - 60
+  - 70
+  - 75
+  - 80
+  - 90
+  - 100
+  - 105
+  - 110
+  - 120
+  - 125
+  - 150
+  - 180
+  - 220
+  - 240
+  - 300
+  - 330
+  - 360
+  - 440
+  - 480
+  - 550
+  - 720
+  - 1080
+  - 1440
+  - 2120
+  - 2880
+
+# 原始数据集中对于时间间隔一栏名称的叫法不一（通常位于表格左上角）
+# 影响数据的收集，需要记录以进行函数处理
+denied_interval_markers:
+  - ''
+  - 'time'
+  - 'organ'
+  - 'time(min)'
+  - 'tissue'
+  - 'organs'
+  - 'tissues'
+  - '% id/organ'
+  - '%id/organ'
+  - 'organ distribution'
+  - 'organdistribution'
+  - 'regin'
+  - 'organ（body）'
+  - 'organ or tissue'
+  - 'organ/1h'
+  - 'Compound No.'
+  - 'compoundno.'
+
+# 数据中可能存在OCR识别错误而产生的字符错误，修正这些字符
+OCR_error_text:
+  'mim': 'min'
+  'minb': 'min'
+  'minc': 'min'
+  'miu': 'min'
+  'mn': 'min'
+  'meanm': 'mean'
+  'meann': 'mean'
+  'mmean': 'mean'
+  'sem': 'sd'
+  'se': 'sd'
+  '*': ''
