@@ -219,7 +219,7 @@ class DataMerger:
                 try:
                     # 使用RDkit读取mol文件并计算SMILES
                     writer = Chem.MolFromMolFile(compound_file_name)
-                    SMILES = Chem.MolToSmiles(writer)
+                    SMILES = Chem.MolToSmiles(writer, isomericSmiles=True, canonical=False)
                 except OSError as ose:
                     log.debug(f"输入的mol文件存在问题，化合物编号为{compound_file_name}")
                     log.debug(traceback.format_exc())
